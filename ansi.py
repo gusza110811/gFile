@@ -10,6 +10,7 @@ CLEARLINE = f"{esc}2K"
 CLEARTOEND = f"{esc}0K"
 CLEARFROM1 = f"{esc}1K"
 CLEARBELOW = f"{esc}0J"
+CURSORUP = f"{esc}1A"
 
 RESET = f"{esc}0m"
 BLUE = f"{esc}34m"

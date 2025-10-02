@@ -1,10 +1,11 @@
-import pynput
+import pynput # pyright: ignore[reportMissingModuleSource]
 import os
 import sys
 import termios
 import subprocess
 from ansi import *
 import re
+import pathlib
 
 class App:
     def __init__(self):
@@ -39,7 +40,7 @@ H to show this message"
         ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         for idx, item in enumerate(self.items):
             buffer += RESET
-            length = len(ansi_escape.sub("",buffer.splitlines()[-1])) + len(item) + 1
+            length = len(ansi_escape.sub("",buffer.splitlines()[-1])) + len(item) + 3 + padding-len(item)
             if length > os.get_terminal_size().columns:
                 distanceToNextLn = distanceToNextLn + ([items]*items)
                 items = 0
@@ -52,7 +53,7 @@ H to show this message"
                 elif os.path.isdir(item):
                     buffer += BRIGHT_BLUE
             items += 1
-            buffer += "'"+item+"'"+RESET+(" "*(padding-len(item))+" ")
+            buffer += "'"+item+"'"+RESET+(" "*(padding-len(item)))
         self.distanceToNextLn = distanceToNextLn.copy()
 
         buffer += "\n"
@@ -62,12 +63,16 @@ H to show this message"
     
     def update_path(self,path):
         self.clearPending = True
-        self.itemIdx = 0
+        prevdir = os.getcwd().split("/")[-1]
         os.chdir(path)
         self.cwd = os.getcwd()
         self.items = os.listdir(self.cwd)
         self.items.sort()
-    
+        if path == "..":
+            self.itemIdx = self.items.index(prevdir)
+        else:
+            self.itemIdx = 0
+
     def quit(self):
         self.listener.stop()
 
