@@ -1,11 +1,10 @@
-import pynput # pyright: ignore[reportMissingModuleSource]
+import pynput
 import os
 import sys
 import termios
 import subprocess
 from ansi import *
 import re
-import pathlib
 
 class App:
     def __init__(self):
