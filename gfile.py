@@ -1,8 +1,7 @@
-import keyboard
-import psutil
+import pynput
 import os
-import time
 import sys
+import termios
 import subprocess
 from ansi import *
 
@@ -12,57 +11,76 @@ class App:
         self.itemIdx = 0
         self.cwd = os.getcwd()
         self.items = []
-        terminal = psutil.Process(os.getppid()).name().lower()
-        if os.name == "nt" and "cmd.exe" in terminal: # just one of the many possibility of no ansi support
-            self.ansiSupport = False
+
+        self.running = True
+
+        self.clearPending = False
+
+        self.distanceToNextLn = []
+
+        self.HELP = "Arrow keys to select items\n\
+            Esc to move to parent directory\n\
+            Enter to move into the selected directory\n\
+            Q to quit\n\
+            C to start shell here\n\
+            H to show this message"
 
         return
 
     def render(self):
+        if self.clearPending:
+            print(CLEAR)
+            self.clearPending = False
+
         buffer = ""
-        buffer += "In "+self.cwd+(CLEARTOEND if self.ansiSupport else "")+"\n"
+        buffer += HOME+"\n"+GRAY+ "In "+self.cwd+CLEARTOEND+"\n"
+        items = 0
+        maxlength = max([len(item) for item in self.items])
+
         for idx, item in enumerate(self.items):
             buffer += RESET
-            length = len(buffer.splitlines()[-1].replace(RESET,"").replace(GRAY_BG,"")) + len(item) + 2
+            length = len(buffer.splitlines()[-1].replace(RESET,"").replace(GRAY_BG,"").replace(BRIGHT_BLUE,"").replace(BRIGHT_WHITE,"").replace(RESET,"")) + len(item) + 2
             if length > os.get_terminal_size().columns:
+                self.distanceToNextLn = self.distanceToNextLn + ([items]*items)
+                items = 0
                 buffer += "\n"
             if idx == self.itemIdx:
-                if self.ansiSupport:
-                    buffer += GRAY_BG
-                else:
-                    buffer += "> "
+                buffer += GRAY_BG
             if self.ansiSupport:
                 if os.path.isfile(item):
                     buffer += BRIGHT_WHITE
                 elif os.path.isdir(item):
                     buffer += BRIGHT_BLUE
-            buffer += "'"+item+"'"+RESET+"   "
+            items += 1
+            buffer += "'"+item+"'"+RESET+(" "*(maxlength-len(item))+" ")
+
+
         buffer += "\n"
-        if self.ansiSupport: buffer = CLEAR+GRAY + buffer
-        else: os.system("cls")
         print(buffer,end="",flush=True)
 
         return
     
     def update_path(self,path):
+        print(CLEAR)
         self.itemIdx = 0
         os.chdir(path)
         self.cwd = os.getcwd()
         self.items = os.listdir(self.cwd)
+    
+    def quit(self):
+        self.running = False
 
     def main(self):
         self.items = os.listdir(self.cwd)
-
-        def nothing(key):return
 
         def left():
             self.itemIdx = (self.itemIdx-1) % len(self.items)
         def right():
             self.itemIdx = (self.itemIdx+1) % len(self.items)
         def up():
-            self.itemIdx = (self.itemIdx-5) % len(self.items)
+            self.itemIdx = (self.itemIdx-self.distanceToNextLn[self.itemIdx]) % len(self.items)
         def down():
-            self.itemIdx = (self.itemIdx+5) % len(self.items)
+            self.itemIdx = (self.itemIdx+self.distanceToNextLn[self.itemIdx]) % len(self.items)
 
         def enter():
             print(CLEAR,end="",flush=True)
@@ -73,54 +91,52 @@ class App:
         def esc():
             self.update_path("..")
         
-        def handler(event):
-            clear_stdin()
-            if event.event_type != keyboard.KEY_DOWN:
-                return
+        def handler(key):
+            keys = pynput.keyboard.Key
 
-            name = event.name
-            if name == "left":left()
-            elif name == "right":right()
-            elif name == "up":up()
-            elif name == "down": down()
+            name = key
+            if name == keys.left:left()
+            elif name == keys.right:right()
+            elif name == keys.up:up()
+            elif name == keys.down: down()
 
-            elif name == "enter":enter()
-            elif name == "esc": esc()
+            elif name == keys.enter:enter()
+            elif name == keys.esc: esc()
 
-        keyboard.hook(handler)
+            try:
+                name = key.char
+            except AttributeError:
+                name = None
 
-        while 1:
             self.render()
+            if name == "q":
+                self.quit()
+            if name == "c":
+                termios.tcflush(sys.stdin,termios.TCIFLUSH)
+                shell = os.environ['SHELL']
+                subprocess.call([shell])
+                self.clearPending = True
 
-            key = keyboard.read_key()
+            if name == "h":
+                print(self.HELP)
+                self.clearPending = True
 
-            if key == "q":
-                clear_stdin()
-                sys.exit()
+        self.listener = pynput.keyboard.Listener(handler)
+        self.listener.start()
+        print(CLEAR)
+        self.render()
+
+        try:
+            while self.running:
+                pass
+        except KeyboardInterrupt:
+            quit()
+
+        termios.tcflush(sys.stdin,termios.TCIFLUSH)
+        os.system(f"cd {self.cwd}")
+        self.listener.stop()
 
         return
-
-def clear_stdin():
-    try:
-        if os.name == "nt":
-            import msvcrt
-
-            while msvcrt.kbhit():
-                msvcrt.getch()
-        elif os.name == "posix":
-            import select
-
-            stdin, _, _ = select.select([sys.stdin], [], [], 0)
-            if stdin:
-                if sys.stdin.isatty():
-                    from termios import TCIFLUSH, tcflush
-
-                    tcflush(sys.stdin.fileno(), TCIFLUSH)
-                else:
-                    while sys.stdin.read(1024):
-                        pass
-    except ImportError:
-        pass
 
 if __name__ == "__main__":
 
