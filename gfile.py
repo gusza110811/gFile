@@ -4,6 +4,7 @@ import sys
 import termios
 import subprocess
 from ansi import *
+import re
 
 class App:
     def __init__(self):
@@ -12,18 +13,16 @@ class App:
         self.cwd = os.getcwd()
         self.items = []
 
-        self.running = True
-
         self.clearPending = False
 
         self.distanceToNextLn = []
 
         self.HELP = "Arrow keys to select items\n\
-            Esc to move to parent directory\n\
-            Enter to move into the selected directory\n\
-            Q to quit\n\
-            C to start shell here\n\
-            H to show this message"
+Esc to move to parent directory\n\
+Enter to move into the selected directory\n\
+Q to quit\n\
+C to start shell here\n\
+H to show this message"
 
         return
 
@@ -35,13 +34,14 @@ class App:
         buffer = ""
         buffer += HOME+"\n"+GRAY+ "In "+self.cwd+CLEARTOEND+"\n"
         items = 0
-        maxlength = max([len(item) for item in self.items])
-
+        padding = max([len(item) for item in self.items])
+        distanceToNextLn = []
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         for idx, item in enumerate(self.items):
             buffer += RESET
-            length = len(buffer.splitlines()[-1].replace(RESET,"").replace(GRAY_BG,"").replace(BRIGHT_BLUE,"").replace(BRIGHT_WHITE,"").replace(RESET,"")) + len(item) + 2
+            length = len(ansi_escape.sub("",buffer.splitlines()[-1])) + len(item) + 1
             if length > os.get_terminal_size().columns:
-                self.distanceToNextLn = self.distanceToNextLn + ([items]*items)
+                distanceToNextLn = distanceToNextLn + ([items]*items)
                 items = 0
                 buffer += "\n"
             if idx == self.itemIdx:
@@ -52,8 +52,8 @@ class App:
                 elif os.path.isdir(item):
                     buffer += BRIGHT_BLUE
             items += 1
-            buffer += "'"+item+"'"+RESET+(" "*(maxlength-len(item))+" ")
-
+            buffer += "'"+item+"'"+RESET+(" "*(padding-len(item))+" ")
+        self.distanceToNextLn = distanceToNextLn.copy()
 
         buffer += "\n"
         print(buffer,end="",flush=True)
@@ -61,14 +61,15 @@ class App:
         return
     
     def update_path(self,path):
-        print(CLEAR)
+        self.clearPending = True
         self.itemIdx = 0
         os.chdir(path)
         self.cwd = os.getcwd()
         self.items = os.listdir(self.cwd)
+        self.items.sort()
     
     def quit(self):
-        self.running = False
+        self.listener.stop()
 
     def main(self):
         self.items = os.listdir(self.cwd)
@@ -77,10 +78,17 @@ class App:
             self.itemIdx = (self.itemIdx-1) % len(self.items)
         def right():
             self.itemIdx = (self.itemIdx+1) % len(self.items)
+
         def up():
-            self.itemIdx = (self.itemIdx-self.distanceToNextLn[self.itemIdx]) % len(self.items)
+            try:
+                self.itemIdx = (self.itemIdx-self.distanceToNextLn[self.itemIdx]) % len(self.items)
+            except IndexError:
+                left()
         def down():
-            self.itemIdx = (self.itemIdx+self.distanceToNextLn[self.itemIdx]) % len(self.items)
+            try:
+                self.itemIdx = (self.itemIdx+self.distanceToNextLn[self.itemIdx]) % len(self.items)
+            except IndexError:
+                right()
 
         def enter():
             print(CLEAR,end="",flush=True)
@@ -114,6 +122,11 @@ class App:
             if name == "c":
                 termios.tcflush(sys.stdin,termios.TCIFLUSH)
                 shell = os.environ['SHELL']
+                if not shell:
+                    if os.name == "nt":
+                        shell = "c:/windows/system32/cmd.exe"
+                    else:
+                        shell = "/bin/sh"
                 subprocess.call([shell])
                 self.clearPending = True
 
@@ -121,20 +134,13 @@ class App:
                 print(self.HELP)
                 self.clearPending = True
 
-        self.listener = pynput.keyboard.Listener(handler)
-        self.listener.start()
         print(CLEAR)
         self.render()
-
-        try:
-            while self.running:
-                pass
-        except KeyboardInterrupt:
-            quit()
-
+        self.listener = pynput.keyboard.Listener(handler)
+        self.listener.start()
+        self.listener.join()
+        print(CLEAR)
         termios.tcflush(sys.stdin,termios.TCIFLUSH)
-        os.system(f"cd {self.cwd}")
-        self.listener.stop()
 
         return
 
