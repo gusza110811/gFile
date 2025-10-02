@@ -67,6 +67,7 @@ H to show this message"
         os.chdir(path)
         self.cwd = os.getcwd()
         self.items = os.listdir(self.cwd)
+        self.items.append("..")
         self.items.sort()
         if path == "..":
             self.itemIdx = self.items.index(prevdir)
@@ -77,7 +78,7 @@ H to show this message"
         self.listener.stop()
 
     def main(self):
-        self.items = os.listdir(self.cwd)
+        self.update_path(os.getcwd())
 
         def left():
             self.itemIdx = (self.itemIdx-1) % len(self.items)
