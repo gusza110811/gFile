@@ -49,6 +49,7 @@ H to show this message"
                     buffer += BRIGHT_BLUE
             items += 1
             buffer += "'"+item+"'"+RESET+(" "*(padding-len(item)))
+        distanceToNextLn = distanceToNextLn + ([items]*items)
         self.distanceToNextLn = distanceToNextLn.copy()
 
         buffer += "\n"
@@ -81,7 +82,8 @@ H to show this message"
 
         def up():
             try:
-                self.itemIdx = (self.itemIdx-self.distanceToNextLn[self.itemIdx]) % len(self.items)
+                dist = self.distanceToNextLn[self.itemIdx-self.distanceToNextLn[self.itemIdx]] % len(self.distanceToNextLn)
+                self.itemIdx = (self.itemIdx-dist) % len(self.items)
             except IndexError:
                 left()
         def down():
@@ -137,7 +139,10 @@ H to show this message"
         self.render()
         self.listener = pynput.keyboard.Listener(handler)
         self.listener.start()
-        self.listener.join()
+        try:
+            self.listener.join()
+        except KeyboardInterrupt:
+            self.quit()
         print(CLEAR)
         if os.name != "nt":
             termios.tcflush(sys.stdin, termios.TCIFLUSH)
