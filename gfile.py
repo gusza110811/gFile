@@ -123,21 +123,22 @@ SHIFT+H show this message
         self.cwd = os.getcwd()
         self.items = os.listdir(self.cwd)
 
-        if self.hide_hidden:
-            self.items = [name for name in self.items if not name.startswith(".")]
+        if self.items:
+            if self.hide_hidden:
+                self.items = [name for name in self.items if not name.startswith(".")]
 
-        self.items.sort()
+            self.items.sort()
 
         self.items.insert(0,"..")
         self.items.insert(0,".")
         try:
             self.itemIdx = self.items.index(prevdir)
         except ValueError:
-            self.itemIdx = 2
+            self.itemIdx = min(2, len(self.items)-1)
 
-    def quit(self):
+    def quit(self,message:str="Exit"):
         print("\x1b[?25h\x1b[?1049l", end="")  # leave alt screen
-        print("Exit")
+        print(message)
         termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, self.orig)
         sys.exit()
 
@@ -192,7 +193,7 @@ SHIFT+H show this message
 
             self.render()
             if name == "QUIT":
-                self.quit()
+                self.quit("Quit")
             if name == "SHELL":
                 self.busy_wait = False
                 self.listener.suspend()
@@ -267,7 +268,7 @@ SHIFT+H show this message
 
         tty.setcbreak(stdin.fileno())
 
-        print("\x1b[?1049h\x1b[?25l", end="")  # enter alt screen and hide cursor
+        #print("\x1b[?1049h\x1b[?25l", end="")  # enter alt screen and hide cursor
 
         self.listener.start()
 
@@ -280,8 +281,7 @@ SHIFT+H show this message
                 handler(key)
         except KeyboardInterrupt:
             pass
-        finally:
-            if self.running: self.quit()
+        self.quit()
 
         return
 
