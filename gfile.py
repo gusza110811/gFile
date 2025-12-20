@@ -268,7 +268,7 @@ SHIFT+H show this message
 
         tty.setcbreak(stdin.fileno())
 
-        #print("\x1b[?1049h\x1b[?25l", end="")  # enter alt screen and hide cursor
+        print("\x1b[?1049h\x1b[?25l", end="")  # enter alt screen and hide cursor
 
         self.listener.start()
 
