@@ -139,6 +139,7 @@ SHIFT+H show this message
         print("\x1b[?25h\x1b[?1049l", end="")  # leave alt screen
         print("Exit")
         termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, self.orig)
+        sys.exit()
 
     def main(self, path:str):
         self.update_path(path)
