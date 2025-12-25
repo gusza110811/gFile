@@ -5,6 +5,7 @@ import threading
 import re
 from collections import deque
 import waiting
+import filetype
 
 esc = "\x1b["
 
@@ -17,10 +18,12 @@ CLEARBELOW = f"{esc}0J"
 CURSORUP = f"{esc}1A"
 
 RESET = f"{esc}0m"
+MAGENTA = f"{esc}35m"
+RED = f"{esc}31m"
+GREEN = f"{esc}32m"
 BLUE = f"{esc}34m"
-BRIGHT_BLUE = f"{esc}94m"
+CYAN = f"{esc}36m"
 WHITE = f"{esc}37m"
-BRIGHT_WHITE = f"{esc}97m"
 GRAY = f"{esc}90m"
 GRAY_BG = f"{esc}100m"
 
@@ -70,9 +73,11 @@ class Key_Listener(threading.Thread):
 class App:
     def __init__(self):
         self.ansiSupport = True
-        self.itemIdx = 0
+        self.itemCol = 0
+        self.itemRow = 0
         self.cwd = os.getcwd()
         self.items = []
+        self.items2d:list[list] = []
         self.hide_hidden = True
 
         self.running = True
@@ -93,9 +98,9 @@ Q       quit
 C       start shell here
 T       start new terminal here
 F       open selection with xdg-open
-G       select the first item (excluding . and ..)
-SHIFT+G select the last item
-SHIFT+H show this message
+G       select the first item
+Shift+G select the last item
+Shift+H show this message
 """
 
         return
@@ -103,32 +108,56 @@ SHIFT+H show this message
     def render(self):
 
         buffer = ""
-        buffer += CLEAR+"\n"+GRAY+self.cwd+"/"+ WHITE+self.items[self.itemIdx]+CLEARTOEND+"\n"
-        max_item_len = min(os.get_terminal_size().columns // 6,80)
-        items = 0
+        try:
+            buffer += HOME+"\n"+GRAY+self.cwd+"/"+ WHITE+self.items2d[self.itemRow][self.itemCol]+CLEARTOEND+"\n"
+        except IndexError:
+            buffer += HOME+"\n"+GRAY+self.cwd+"/?"+CLEARTOEND+"\n"
+        max_item_len = min(os.get_terminal_size().columns // 5,80)
+        olditems2d = self.items2d
+        self.items2d = []
+        rowi = 0
+        coli = 0
+        row = []
         padding = min(max([len(item) for item in self.items]),max_item_len)
-        distanceToNextLn = []
         ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         for idx, item in enumerate(self.items):
             buffer += RESET
             length = len(ansi_escape.sub("",buffer.splitlines()[-1])) + len(item) + 3 + padding-len(item)
+
             if length > os.get_terminal_size().columns:
-                distanceToNextLn = distanceToNextLn + ([items]*items)
-                items = 0
+                rowi += 1
+                coli = 0
+                self.items2d.append(row)
+                row = []
                 buffer += "\n"
-            if idx == self.itemIdx:
-                buffer += GRAY_BG
+                row.append(item)
+            else:
+                coli += 1
+                row.append(item)
+            try:
+                if olditems2d[self.itemRow][self.itemCol] == item:
+                    buffer += GRAY_BG
+            except IndexError:
+                pass
             if self.ansiSupport:
-                if os.path.isfile(item):
-                    buffer += BRIGHT_WHITE
-                elif os.path.isdir(item):
-                    buffer += BRIGHT_BLUE
-            items += 1
+                if os.path.isdir(item):
+                    buffer += BLUE
+                elif filetype.is_image(item) or filetype.is_video(item):
+                    buffer += MAGENTA
+                elif os.access(item,os.X_OK):
+                    buffer += GREEN
+                elif os.path.islink(item):
+                    buffer += CYAN
+                elif filetype.is_archive(item):
+                    buffer += RED
+                else:
+                    buffer += WHITE
             if len(item) > max_item_len:
-                item = item[:max_item_len-3]+GRAY+"..."
+                item = item[:max_item_len-3]+"..."
             buffer += "'"+item+"'"+RESET+(" "*(padding-len(item)))
-        distanceToNextLn = distanceToNextLn + ([items]*items)
-        self.distanceToNextLn = distanceToNextLn.copy()
+        
+        if row:
+            self.items2d.append(row)
 
         buffer += "\n"
         print(buffer,end="",flush=True)
@@ -136,10 +165,23 @@ SHIFT+H show this message
         return
     
     def update_path(self,path=None):
+        print(CLEAR,end="")
         prevdir = os.getcwd().split("/")[-1]
-        if path: os.chdir(path)
+        try:
+            if path: os.chdir(path)
+        except OSError:
+            return
         self.cwd = os.getcwd()
         self.items = os.listdir(self.cwd)
+
+        def find_nested(item_name):
+            for idx, row in enumerate(self.items2d):
+                try:
+                    return idx, row.index(item_name)
+                except ValueError:
+                    pass
+            
+            raise ValueError(f"{item_name} not found")
 
         if self.items:
             if self.hide_hidden:
@@ -150,9 +192,12 @@ SHIFT+H show this message
         self.items.insert(0,"..")
         self.items.insert(0,".")
         try:
-            self.itemIdx = self.items.index(prevdir)
+            self.itemRow, self.itemCol = find_nested(prevdir)
         except ValueError:
-            self.itemIdx = min(2, len(self.items)-1)
+            try:
+                self.itemRow, self.itemCol = 0, min(2,len(self.items2d[self.itemRow])-1)
+            except IndexError:
+                self.itemRow, self.itemCol = 0, 2
 
     def quit(self,message:str="Exit"):
         print("\x1b[?25h\x1b[?1049l", end="")  # leave alt screen
@@ -165,22 +210,18 @@ SHIFT+H show this message
         self.orig = termios.tcgetattr(sys.stdin.fileno())
 
         def left():
-            self.itemIdx = (self.itemIdx-1) % len(self.items)
+            self.itemCol = (self.itemCol-1) % len(self.items2d[self.itemRow])
         def right():
-            self.itemIdx = (self.itemIdx+1) % len(self.items)
+            self.itemCol = (self.itemCol+1) % len(self.items2d[self.itemRow])
 
         def up():
-            try:
-                dist = self.distanceToNextLn[self.itemIdx-self.distanceToNextLn[self.itemIdx]] % len(self.distanceToNextLn)
-                self.itemIdx = max(self.itemIdx-dist, 0)
-            except IndexError:
-                left()
+            self.itemRow = (self.itemRow-1) % len(self.items2d)
+            if self.itemCol != self.itemCol % len(self.items2d[self.itemRow]):
+                self.itemRow = (self.itemRow-1) % len(self.items2d)
         def down():
-            try:
-                dist = self.distanceToNextLn[self.itemIdx]
-                self.itemIdx = min(self.itemIdx+dist, len(self.items)-1)
-            except IndexError:
-                right()
+            self.itemRow = (self.itemRow+1) % len(self.items2d)
+            if self.itemCol != self.itemCol % len(self.items2d[self.itemRow]):
+                self.itemRow = (self.itemRow+1) % len(self.items2d)
         def top():
             self.itemIdx = 2
         def bottom():
@@ -188,7 +229,7 @@ SHIFT+H show this message
 
         def enter():
             print(CLEAR,end="",flush=True)
-            target = self.items[self.itemIdx]
+            target = self.items2d[self.itemRow][self.itemCol]
             if os.path.isdir(target):
                 self.update_path(target)
         
@@ -211,7 +252,7 @@ SHIFT+H show this message
 
             self.render()
             if name == "QUIT":
-                self.quit("Quit")
+                self.running = False
             if name == "SHELL":
                 self.busy_wait = False
                 self.listener.suspend()
@@ -232,7 +273,7 @@ SHIFT+H show this message
                     print("Failed to start terminal")
 
             if name == "OPEN":
-                target = self.items[self.itemIdx]
+                target = self.items2d[self.itemRow][self.itemCol]
                 subprocess.Popen(["xdg-open", target])
 
             if name == "HELP":
@@ -290,18 +331,19 @@ SHIFT+H show this message
 
         self.listener.start()
 
+        self.render(); self.render() # the reason it needs to render twice on start is quite silly
+
         try:
-            self.render()
             while self.running:
                 key = parse()
                 print(CLEAR)
-                self.render()
                 handler(key)
+                self.render()
         except KeyboardInterrupt:
             pass
+        except Exception as e:
+            self.quit(f"Exit due to unknown error ({e})")
         self.quit()
-
-        return
 
 if __name__ == "__main__":
 
