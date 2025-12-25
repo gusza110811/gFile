@@ -215,13 +215,15 @@ Shift+H show this message
             self.itemCol = (self.itemCol+1) % len(self.items2d[self.itemRow])
 
         def up():
-            self.itemRow = (self.itemRow-1) % len(self.items2d)
-            if self.itemCol != self.itemCol % len(self.items2d[self.itemRow]):
-                self.itemRow = (self.itemRow-1) % len(self.items2d)
+            if self.itemRow == 0:
+                return
+            self.itemRow -= 1
+
         def down():
-            self.itemRow = (self.itemRow+1) % len(self.items2d)
-            if self.itemCol != self.itemCol % len(self.items2d[self.itemRow]):
-                self.itemRow = (self.itemRow+1) % len(self.items2d)
+            if self.itemRow == len(self.items2d)-1:
+                return
+            self.itemRow += 1
+            self.itemCol = min(self.itemCol, len(self.items2d[self.itemRow]) - 1)
         def top():
             self.itemIdx = 2
         def bottom():
