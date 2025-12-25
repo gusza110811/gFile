@@ -136,7 +136,7 @@ Shift+H show this message
                 row.append(item)
             try:
                 if olditems2d[self.itemRow][self.itemCol] == item:
-                    buffer += GRAY_BG
+                    buffer += "\b>"+GRAY_BG
             except IndexError:
                 pass
             if self.ansiSupport:
@@ -152,7 +152,7 @@ Shift+H show this message
                     buffer += RED
                 else:
                     buffer += WHITE
-            if len(item) > max_item_len:
+            if len(item)+2 > max_item_len:
                 item = item[:max_item_len-3]+"..."
             buffer += "'"+item+"'"+RESET+(" "*(padding-len(item)))
         
@@ -165,7 +165,6 @@ Shift+H show this message
         return
     
     def update_path(self,path=None):
-        print(CLEAR,end="")
         prevdir = os.getcwd().split("/")[-1]
         try:
             if path: os.chdir(path)
@@ -332,6 +331,8 @@ Shift+H show this message
         print("\x1b[?1049h\x1b[?25l", end="")  # enter alt screen and hide cursor
 
         self.listener.start()
+
+        print(CLEAR)
 
         self.render(); self.render() # the reason it needs to render twice on start is quite silly
 
