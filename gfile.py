@@ -2,10 +2,27 @@
 import os, sys, subprocess
 import termios, tty
 import threading
-from ansi import *
 import re
 from collections import deque
 import waiting
+
+esc = "\x1b["
+
+HOME = f"{esc}H"
+CLEAR = f"{esc}H{esc}2J"
+CLEARLINE = f"{esc}2K"
+CLEARTOEND = f"{esc}0K"
+CLEARFROM1 = f"{esc}1K"
+CLEARBELOW = f"{esc}0J"
+CURSORUP = f"{esc}1A"
+
+RESET = f"{esc}0m"
+BLUE = f"{esc}34m"
+BRIGHT_BLUE = f"{esc}94m"
+WHITE = f"{esc}37m"
+BRIGHT_WHITE = f"{esc}97m"
+GRAY = f"{esc}90m"
+GRAY_BG = f"{esc}100m"
 
 class Key_Listener(threading.Thread):
     def __init__(self, group = None, name = None):
@@ -70,7 +87,8 @@ class App:
 Arrow keys/H/J/K/L
         move selection
 Esc     move to parent directory
-Enter   move into the selected directory
+Enter/space
+        move into the selected directory
 Q       quit
 C       start shell here
 T       start new terminal here
