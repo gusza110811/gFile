@@ -121,7 +121,7 @@ Shift+H show this message
         padding = min(max([len(item) for item in self.items]),max_item_len)
         ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         for idx, item in enumerate(self.items):
-            buffer += RESET
+            buffer += RESET + "  "
             length = len(ansi_escape.sub("",buffer.splitlines()[-1])) + len(item) + 3 + padding-len(item)
 
             if length > os.get_terminal_size().columns:
@@ -129,7 +129,7 @@ Shift+H show this message
                 coli = 0
                 self.items2d.append(row)
                 row = []
-                buffer += "\n"
+                buffer += "\n  "
                 row.append(item)
             else:
                 coli += 1
@@ -152,9 +152,9 @@ Shift+H show this message
                     buffer += RED
                 else:
                     buffer += WHITE
-            if len(item)+2 > max_item_len:
+            if len(item)+1 > max_item_len:
                 item = item[:max_item_len-3]+"..."
-            buffer += "'"+item+"'"+RESET+(" "*(padding-len(item)))
+            buffer += "'"+item+"'"+RESET+(" "*(padding+1-len(item)))
         
         if row:
             self.items2d.append(row)
