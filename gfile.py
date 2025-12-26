@@ -1,8 +1,9 @@
 #!/bin/env python3
 import os, sys, subprocess
-import termios, tty
+import time
+import termios, tty, select
 import threading
-import re
+import re, shlex
 from collections import deque
 import waiting
 import filetype
@@ -35,11 +36,17 @@ class Key_Listener(threading.Thread):
         self.suspend_accept = False
 
     def listen(self):
-        while 1:
+        fd = sys.stdin.fileno()
+        while True:
             if self.suspended:
                 self.suspend_accept = True
-                waiting.wait(lambda: not self.suspended)
-            self.buffer.append(sys.stdin.read(1))
+                while self.suspended:
+                    time.sleep(0.01)
+                continue
+
+            r, _, _ = select.select([fd], [], [], 0.01)
+            if r:
+                self.buffer.append(os.read(fd, 1).decode())
 
     def get(self):
         try:
@@ -54,19 +61,18 @@ class Key_Listener(threading.Thread):
 
     def busy_wait(self):
         while len(self.buffer) == 0:
-            if self.suspended:
-                return ""
+            pass
 
         return self.buffer.popleft()
 
     def clear(self):
         self.buffer = deque()
-    
+
     def suspend(self):
         self.suspended = True
         while not self.suspend_accept: pass # make sure the thread suspended
     
-    def cont(self):
+    def resume(self):
         self.suspended = False
         self.suspend_accept = False
 
@@ -90,17 +96,16 @@ class App:
 
         self.HELP = """
 Arrow keys/H/J/K/L
-        move selection
-Esc     move to parent directory
-Enter/space
-        move into the selected directory
-Q       quit
-C       start shell here
-T       start new terminal here
-F       open selection with xdg-open
-G       select the first item
-Shift+G select the last item
-Shift+H show this message
+            move selection
+Space       move into the selected directory
+A           move to parent directory
+S           start new terminal here
+F           open selection with xdg-open
+ENTER       run a command with selected item and stop gfile
+D           select the first item
+C           select the last item
+Shift+H     show this message
+Q           quit
 """
 
         return
@@ -198,7 +203,7 @@ Shift+H show this message
             except IndexError:
                 self.itemRow, self.itemCol = 0, 2
 
-    def quit(self,message:str="Exit"):
+    def quit(self,message:str=None):
         print("\x1b[?25h\x1b[?1049l", end="")  # leave alt screen
         print(message)
         termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, self.orig)
@@ -248,21 +253,26 @@ Shift+H show this message
             elif name == "BOTTOM":bottom()
 
             elif name == "DOT":toggle_hidden()
-            elif name == "ENTER":enter()
+            elif name == "CD":enter()
             elif name == "PARENT":self.update_path("..")
 
             self.render()
             if name == "QUIT":
                 self.running = False
-            if name == "SHELL":
-                self.busy_wait = False
+            
+            if name == "COMMAND":
+                print("\x1b[?25h\x1b[?1049l", end="")
+                termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, self.orig)
                 self.listener.suspend()
-                shell = os.environ['SHELL']
-                if not shell:
-                    shell = "/bin/sh"
-                subprocess.run([shell])
-                self.listener.cont()
-                self.busy_wait = True
+                choice = self.items2d[self.itemRow][self.itemCol]
+                try:
+                    command = shlex.split(input(f"Command to use for {BLUE}{self.cwd}/{choice}{RESET} (CTRL+C to cancel) > "))
+                    command.append(choice)
+                    os.execvp(command[0],command)
+                except KeyboardInterrupt:
+                    tty.setcbreak(stdin.fileno())
+                    print("\x1b[?1049h\x1b[?25l", end="")
+                    self.listener.resume()
 
             if name == "TERMINAL":
                 term = os.environ['TERMINAL']
@@ -286,12 +296,14 @@ Shift+H show this message
                 pre = listener.busy_wait()
             else:
                 pre = listener.wait()
-            output = "\0"
+            output = ""
 
             if pre == "\x1b":
+                time.sleep(0.01)
                 pre += listener.get() + listener.get()
-
-            if pre == "\x1b[A" or pre == "k":
+            if pre == "\n":
+                output = "COMMAND"
+            elif pre == "\x1b[A" or pre == "k":
                 output = "UP"
             elif pre == "\x1b[B" or pre == "j":
                 output = "DOWN"
@@ -302,20 +314,18 @@ Shift+H show this message
 
             elif pre == "a":
                 output = "PARENT"
-            elif pre == "G":
+            elif pre == "c":
                 output = "BOTTOM"
-            elif pre == "g":
+            elif pre == "d":
                 output = "TOP"
             elif pre == ".":
                 output = "DOT"
-            elif pre == " " or pre == "\n":
-                output = "ENTER"
+            elif pre == " ":
+                output = "CD"
             
             elif pre == "q":
                 output = "QUIT"
             elif pre == "s":
-                output = "SHELL"
-            elif pre == "t":
                 output = "TERMINAL"
             elif pre == "f":
                 output = "OPEN"
