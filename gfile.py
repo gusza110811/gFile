@@ -266,10 +266,11 @@ Q           quit
                 self.listener.suspend()
                 choice = self.items2d[self.itemRow][self.itemCol]
                 try:
-                    command = shlex.split(input(f"Command to use for {BLUE}{self.cwd}/{choice}{RESET} (CTRL+C to cancel) > "))
+                    command = shlex.split(input(f"Command to use for {BLUE}{os.path.normpath(os.path.join(self.cwd,choice))}{RESET} (CTRL+C to cancel) > "))
                     command.append(choice)
                     os.execvp(command[0],command)
                 except KeyboardInterrupt:
+                    print()
                     tty.setcbreak(stdin.fileno())
                     print("\x1b[?1049h\x1b[?25l", end="")
                     self.listener.resume()
