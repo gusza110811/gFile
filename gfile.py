@@ -117,17 +117,17 @@ Q           quit
             buffer += HOME+"\n"+GRAY+self.cwd+"/"+ WHITE+self.items2d[self.itemRow][self.itemCol]+CLEARTOEND+"\n"
         except IndexError:
             buffer += HOME+"\n"+GRAY+self.cwd+"/?"+CLEARTOEND+"\n"
-        max_item_len = min(os.get_terminal_size().columns // 5,80)
+        max_item_len = 80
         olditems2d = self.items2d
         self.items2d = []
         rowi = 0
         coli = 0
         row = []
         padding = min(max([len(item) for item in self.items]),max_item_len)
-        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        char_ignore = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         for idx, item in enumerate(self.items):
             buffer += RESET + "  "
-            length = len(ansi_escape.sub("",buffer.splitlines()[-1])) + len(item) + 3 + padding-len(item)
+            length = len(char_ignore.sub("",buffer.splitlines()[-1])) + len(item) + 3 + padding-len(item)
 
             if length > os.get_terminal_size().columns:
                 rowi += 1
@@ -141,7 +141,9 @@ Q           quit
                 row.append(item)
             try:
                 if olditems2d[self.itemRow][self.itemCol] == item:
-                    buffer += "\b>"+GRAY_BG
+                    buffer += ">"+GRAY_BG
+                else:
+                    buffer += " "
             except IndexError:
                 pass
             if self.ansiSupport:
@@ -159,7 +161,7 @@ Q           quit
                     buffer += WHITE
             if len(item)+1 > max_item_len:
                 item = item[:max_item_len-3]+"..."
-            buffer += "'"+item+"'"+RESET+(" "*(padding+1-len(item)))
+            buffer += "'"+item+"'"+RESET+(" "*(padding-len(item)))
         
         if row:
             self.items2d.append(row)
@@ -203,7 +205,7 @@ Q           quit
             except IndexError:
                 self.itemRow, self.itemCol = 0, 2
 
-    def quit(self,message:str=None):
+    def quit(self,message:str="Exit"):
         print("\x1b[?25h\x1b[?1049l", end="")  # leave alt screen
         print(message)
         termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, self.orig)
